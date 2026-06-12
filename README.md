@@ -67,3 +67,11 @@ Same behavior as v2, restructured so the rules are easier to follow — and easi
 - **Less context can be better** — Flooding a model with context can hurt focus and reliability. Limiting the context window often makes smaller models behave more predictably.
 
 - **Ambiguity gets exploited** — Models will find and use any gap in instructions. Clear, explicit language in agent files is the foundation of reliable behavior.
+
+## Things to Investigate
+
+- RAGs
+- Vector based stores
+- More complex tasks
+- Multi turn sessions
+
