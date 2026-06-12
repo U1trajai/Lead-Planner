@@ -4,6 +4,16 @@ System-prompt definitions for **lead-planner**, a primary planning-and-orchestra
 
 This repo holds three iterations of that prompt. Each one fixed real failures seen in use. Use **`lead-planner-v2-COMPACT.md`** in production; the other two are kept for reference and history.
 
+## Getting set up
+ 
+Running any version of this agent needs three pieces working together:
+ 
+1. **[LM Studio](https://lmstudio.ai/)** ([download](https://lmstudio.ai/download)) — runs the local model that powers little-coder. Install it, download a small model (this prompt targets `qwen/qwen3.5-9B`), and start its local server so little-coder can reach it.
+2. **[OpenCode](https://opencode.ai/)** — the terminal AI-agent harness that runs `lead-planner` as a primary agent. These `.md` files use OpenCode's agent format (the `mode: primary`, `temperature`, and `description` frontmatter). Install it, then add the prompt as an agent.
+3. **[little-coder](https://github.com/itayinbarr/little-coder)** — the CLI the planner delegates all implementation to. It's a coding agent tuned for small local models, with a built-in LM Studio provider. Follow the install steps in its README, then confirm a call like the one below runs against your LM Studio server.
+
+With all three in place, point OpenCode at `lead-planner-v2-COMPACT.md` and start planning.
+
 ## Versions at a glance
 
 | File | Lines | Role |
