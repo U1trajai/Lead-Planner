@@ -74,5 +74,5 @@ Same behavior as v2, restructured so the rules are easier to follow — and easi
 - Vector based stores
 - More complex tasks
 - Multi turn sessions
-- Bench marking this against frontier models
+- Benchmarking this against frontier models
 
