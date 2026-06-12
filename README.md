@@ -67,3 +67,15 @@ PI_RETRY_PROVIDER_TIMEOUTMS=3600000 little-coder --provider lmstudio --model qwe
 ## Which to use
 
 Run **`lead-planner-v2-COMPACT.md`**. Keep `lead-planner-v2.md` as the detailed-rationale reference and `lead-planner.md` as the historical baseline. If a new failure mode appears, prefer adjusting the relevant checklist item in COMPACT over adding a new section, to keep it from re-accumulating into the sprawl that v2 became.
+
+# Lessons Learned: Local LLM Agent Development for Coding Tasks
+
+- **Agent file size matters** — Compact instruction files give models too much room to drift. More detailed files provide better anchoring; optimal size depends on the model.
+
+- **Multi-model review improves results** — Having separate models independently tackle a problem and combining their outputs surfaces blind spots a single model would miss.
+
+- **Temperature controls determinism** — Lower temperatures produce more consistent, predictable outputs. Use higher temperatures only when exploration is the goal.
+
+- **Less context can be better** — Flooding a model with context can hurt focus and reliability. Limiting the context window often makes smaller models behave more predictably.
+
+- **Ambiguity gets exploited** — Models will find and use any gap in instructions. Clear, explicit language in agent files is not optional — it is the foundation of reliable behavior.
