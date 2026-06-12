@@ -68,7 +68,7 @@ PI_RETRY_PROVIDER_TIMEOUTMS=3600000 little-coder --provider lmstudio --model qwe
 
 Run **`lead-planner-v2-COMPACT.md`**. Keep `lead-planner-v2.md` as the detailed-rationale reference and `lead-planner.md` as the historical baseline. If a new failure mode appears, prefer adjusting the relevant checklist item in COMPACT over adding a new section, to keep it from re-accumulating into the sprawl that v2 became.
 
-# Lessons Learned: Local LLM Agent Development for Coding Tasks
+## Lessons Learned
 
 - **Agent file size matters** — Compact instruction files give models too much room to drift. More detailed files provide better anchoring; optimal size depends on the model.
 
