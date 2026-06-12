@@ -1,4 +1,4 @@
-# lead-planner
+# Lead-Planner
 
 System-prompt definitions for **lead-planner**, a primary planning-and-orchestration agent. It reads a request, breaks it into tasks, writes the planning artifacts itself (user stories, design docs, todos, work breakdowns), and delegates **all implementation** to **little-coder** — a local coding model invoked as a CLI through `bash` (LM Studio, model `qwen/qwen3.5-9B`). The planner thinks and coordinates; little-coder writes the code.
 
