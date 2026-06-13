@@ -1,16 +1,18 @@
 # Lead-Planner
 
-System-prompt definitions for **lead-planner**, a primary planning-and-orchestration agent. It reads a request, breaks it into tasks, writes the planning artifacts itself (user stories, design docs, todos, work breakdowns), and delegates **all implementation** to **little-coder** — a local coding model invoked as a CLI through `bash` (LM Studio, model `qwen/qwen3.5-9B`). The planner thinks and coordinates; little-coder writes the code.
+System-prompt definitions for **lead-planner**, a primary planning-and-orchestration agent. It reads a request, breaks it into tasks, writes the planning artifacts itself (user stories, design docs, todos, work breakdowns), and delegates **all implementation** to **little-coder** — a local coding model invoked as a CLI through `bash`. The planner thinks and coordinates; little-coder writes the code.
+
+The prompts are **model-agnostic**. little-coder runs on whatever small local model you choose to serve, so nothing here is tied to a specific LLM — pick a model that runs well on your hardware and point the delegation command at it.
 
 This repo holds three iterations of that prompt. Each one fixed real failures seen in use. Use **`lead-planner-v2-COMPACT.md`** in production; the other two are kept for reference and history.
 
 ## Getting set up
- 
+
 Running any version of this agent needs three pieces working together:
- 
-1. **[LM Studio](https://lmstudio.ai/)** — runs the local model that powers little-coder. Install it, download a small model (this prompt targets `qwen/qwen3.5-9B`), and start its local server so little-coder can reach it.
+
+1. **[LM Studio](https://lmstudio.ai/)** — runs the local models that power the agents. Install it, then download and load **two** small models: one to act as the orchestrator and one to act as the worker that little-coder drives. Any capable small local model works — the prompts don't assume a particular one — so choose whatever fits your hardware. Start LM Studio's local server so little-coder can reach the worker model.
 2. **[OpenCode](https://opencode.ai/)** — the terminal AI-agent harness that runs `lead-planner` as a primary agent. These `.md` files use OpenCode's agent format (the `mode: primary`, `temperature`, and `description` frontmatter). Install it, then add the prompt as an agent.
-3. **[little-coder](https://github.com/itayinbarr/little-coder)** — the CLI the planner delegates all implementation to. It's a coding agent tuned for small local models, with a built-in LM Studio provider. Follow the install steps in its README, then confirm a call like the one below runs against your LM Studio server.
+3. **[little-coder](https://github.com/itayinbarr/little-coder)** — the CLI the planner delegates all implementation to. It's a coding agent tuned for small local models, with a built-in LM Studio provider. Follow the install steps in its README, then confirm that a sample call runs against your LM Studio server before wiring it into the planner.
 
 With all three in place, point OpenCode at `lead-planner-v2-COMPACT.md` and start planning.
 
@@ -56,23 +58,18 @@ Same behavior as v2, restructured so the rules are easier to follow — and easi
 - **Contradictions removed** — earlier versions had rules that quietly disagreed (e.g. "one method per prompt" vs. "a class is one component," "include the signature" vs. "no code"), which made the agent reason *against* its own instructions. Those seams are gone.
 - **Quick-reference block** at the end restates the checklist compactly.
 
-## Lessons Learned
+## Lessons learned
 
 - **Agent file size matters** — Compact instruction files give models too much room to drift. More detailed files provide better anchoring; optimal size depends on the model.
-
 - **Multi-model review improves results** — Having separate models independently tackle a problem and combining their outputs surfaces blind spots a single model would miss.
-
 - **Temperature controls determinism** — Lower temperatures produce more consistent, predictable outputs. Use higher temperatures only when exploration is the goal.
-
 - **Less context can be better** — Flooding a model with context can hurt focus and reliability. Limiting the context window often makes smaller models behave more predictably.
-
 - **Ambiguity gets exploited** — Models will find and use any gap in instructions. Clear, explicit language in agent files is the foundation of reliable behavior.
 
-## Things to Investigate
+## Roadmap / things to investigate
 
-- RAGs
-- Vector based stores
+- Retrieval-augmented generation (RAG)
+- Vector-based stores
 - More complex tasks
-- Multi turn sessions
-- Benchmarking this against frontier models
-
+- Multi-turn sessions
+- Benchmarking against frontier models
