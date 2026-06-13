@@ -66,10 +66,10 @@ Same behavior as v2, restructured so the rules are easier to follow — and easi
 - **Less context can be better** — Flooding a model with context can hurt focus and reliability. Limiting the context window often makes smaller models behave more predictably.
 - **Ambiguity gets exploited** — Models will find and use any gap in instructions. Clear, explicit language in agent files is the foundation of reliable behavior.
 
-## Roadmap / things to investigate
+## Roadmap
 
-- Retrieval-augmented generation (RAG)
-- Vector-based stores
-- More complex tasks
-- Multi-turn sessions
-- Benchmarking against frontier models
+- [ ] **Translation layer** — converts vague user prompts into structured specs before they reach the orchestrator
+- [ ] **RAG store** — retrieves coding style, patterns, and project conventions to inject as context
+- [ ] **Reasoning effort budgets** — explicit low/medium/high effort per layer (translation → orchestrator → worker)
+- [ ] **Prompt logging** — captures raw input vs expanded spec vs output quality to identify failure patterns
+- [ ] **DSPy optimization** — auto-tunes translation prompts once enough logged examples exist
