@@ -4,7 +4,7 @@ System-prompt definitions for **lead-planner**, a primary planning-and-orchestra
 
 The prompts are **model-agnostic**. little-coder runs on whatever small local model you choose to serve, so nothing here is tied to a specific LLM — pick a model that runs well on your hardware and point the delegation command at it.
 
-This repo holds three iterations of that prompt. Each one fixed real failures seen in use. Use **`lead-planner-v2-COMPACT.md`** in production; the other two are kept for reference and history.
+This repo holds four iterations of the agent prompt across three versions. Each one fixed real failures seen in use. Use **`agents/lead-planner/lead-planner-v3.md`** in production; earlier versions are archived under `agents/lead-planner/archive/` for reference and history.
 
 ## Getting set up
 
@@ -14,17 +14,20 @@ Running any version of this agent needs three pieces working together:
 2. **[OpenCode](https://opencode.ai/)** — the terminal AI-agent harness that runs `lead-planner` as a primary agent. These `.md` files use OpenCode's agent format (the `mode: primary`, `temperature`, and `description` frontmatter). Install it, then add the prompt as an agent.
 3. **[little-coder](https://github.com/itayinbarr/little-coder)** — the CLI the planner delegates all implementation to. It's a coding agent tuned for small local models, with a built-in LM Studio provider. Follow the install steps in its README, then confirm that a sample call runs against your LM Studio server before wiring it into the planner.
 
-With all three in place, point OpenCode at `lead-planner-v2-COMPACT.md` and start planning.
+With all three in place, point OpenCode at `agents/lead-planner/lead-planner-v3.md` and start planning.
 
 ## Versions at a glance
 
 | File | Lines | Role |
 |------|------:|------|
-| `lead-planner.md` | 266 | v1 — original baseline |
-| `lead-planner-v2.md` | 425 | v2 — fully hardened, all fixes layered in |
-| `lead-planner-v2-COMPACT.md` | 95 | v2 consolidated — same behavior, de-duplicated **(recommended)** |
+| `archive/lead-planner.md` | 266 | v1 — original baseline |
+| `archive/lead-planner-v2.md` | 425 | v2 — fully hardened, all fixes layered in |
+| `archive/lead-planner-v2-COMPACT.md` | 95 | v2 consolidated — same behavior, de-duplicated |
+| `lead-planner-v3.md` | 43 | v3 — spine + on-demand skills architecture **(recommended)** |
 
-## v1 — `lead-planner.md` (original baseline)
+All files live under `agents/lead-planner/`. v3 draws on four skill files in `skills/` that are loaded on demand rather than inlined into the agent prompt.
+
+## v1 — `archive/lead-planner.md` (original baseline)
 
 Establishes the core concept: a planning agent that delegates implementation to little-coder via `bash` and writes planning artifacts directly.
 
@@ -34,7 +37,7 @@ Limitations that later versions fixed:
 - **Redundant and contradictory** — the "never delegate planning" rule appeared roughly six times, and the emphasis skewed so hard toward "don't delegate / do it yourself" that the agent could stop delegating implementation altogether.
 - **No delegation discipline** — nothing constrained prompt scope (prompts could balloon into whole modules), no "requirements vs. code" rule, no shell-safety rules for the command, and no distinction between a malformed-command error and a little-coder failure.
 
-## v2 — `lead-planner-v2.md` (fully hardened)
+## v2 — `archive/lead-planner-v2.md` (fully hardened)
 
 Same overall structure as v1, with every behavioral fix found in testing added as explicit rules. Improvements over v1:
 
@@ -48,7 +51,7 @@ Same overall structure as v1, with every behavioral fix found in testing added a
 
 Trade-off: thorough but long and repetitive, with several overlapping sections that could compete with one another.
 
-## v2-COMPACT — `lead-planner-v2-COMPACT.md` (consolidated, recommended)
+## v2-COMPACT — `archive/lead-planner-v2-COMPACT.md` (consolidated)
 
 Same behavior as v2, restructured so the rules are easier to follow — and easier for a small local model to obey reliably. Improvements over v2:
 
@@ -57,6 +60,21 @@ Same behavior as v2, restructured so the rules are easier to follow — and easi
 - **Repetition removed** — the "never delegate planning" warnings collapse into a single statement.
 - **Contradictions removed** — earlier versions had rules that quietly disagreed (e.g. "one method per prompt" vs. "a class is one component," "include the signature" vs. "no code"), which made the agent reason *against* its own instructions. Those seams are gone.
 - **Quick-reference block** at the end restates the checklist compactly.
+
+## v3 — `lead-planner-v3.md` (spine + skills, recommended)
+
+Replaces the single monolithic prompt with a **43-line spine** that loads detailed phase instructions on demand from separate skill files. The spine holds only what is always true — identity, the routing rule, the phase sequence, and core invariants. Everything else lives in `skills/` and is loaded when the agent enters that phase.
+
+Improvements over v2-COMPACT:
+
+- **Spine + on-demand skills** — the agent file drops from 95 to 43 lines. Full instructions are kept out of context until needed, reducing noise and keeping each phase's guidance current without bloating the prompt.
+- **Four explicit phases, each with its own skill** — intent extraction, planning artifacts, delegation, and review-and-fix are separate skills loaded in sequence: `intent-extraction` → `planning-artifacts` → `delegating-to-little-coder` → `reviewing-and-fixing`.
+- **Intent extraction as a first-class phase** — the agent now explicitly gathers context from the working directory before planning, answering its own questions read-only before troubling the user. This replaces the implicit "understand the request" step that v2 left undefined.
+- **Orchestrator runs tests; little-coder never does** — made explicit as a core invariant. The review-and-fix skill adds a structured diagnose-then-re-delegate loop (capped at two attempts) and a "distill, don't dump" rule that forbids pasting tracebacks or logs into delegation prompts.
+- **Deterministic tests required** — the delegation skill now requires tests to control time through an injected or mockable clock rather than real sleeps, eliminating the most common source of flaky failures.
+- **Tool reference decoupled from the agent** — the full tool schema reference lives in `rules/tool-use.md` (embedded in the reviewing-and-fixing skill) rather than cluttering the agent file.
+
+Trade-off: behavior is now split across five files, so following a single rule requires reading the right skill. The spine's invariants cover the cases where a skill isn't loaded yet.
 
 ## Lessons learned
 
