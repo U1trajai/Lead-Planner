@@ -98,7 +98,7 @@ def main(argv=None) -> int:
 
     llm = None
     if args.demo:
-        from .fake_llm import FakeLLM
+        from .llm import FakeLLM
 
         llm = FakeLLM()
         request = args.request or "Build a thread-safe rate limiter with deterministic tests"

@@ -15,8 +15,8 @@ from langgraph.types import Command
 
 from lead_planner_graph.builder import build_graph
 from lead_planner_graph.config import load_config
-from lead_planner_graph.fake_llm import FakeLLM
-from lead_planner_graph.little_coder import (
+from lead_planner_graph.llm import FakeLLM
+from lead_planner_graph.nodes.framework.little_coder import (
     DelegationResult,
     PromptValidationError,
     build_command,

@@ -1,89 +1,203 @@
 # Lead-Planner
 
-System-prompt definitions for **lead-planner**, a primary planning-and-orchestration agent. It reads a request, breaks it into tasks, writes the planning artifacts itself (user stories, design docs, todos, work breakdowns), and delegates **all implementation** to **little-coder** — a local coding model invoked as a CLI through `bash`. The planner thinks and coordinates; little-coder writes the code.
+A planning-and-orchestration agent built on a **LangGraph DAG**. It reads a
+request, breaks it into tasks, writes the planning artifacts itself (user
+stories, design docs, todos, work breakdowns), and delegates **all
+implementation** to **little-coder** — a local coding model invoked as a CLI.
+The planner thinks and coordinates; little-coder writes the code.
 
-The prompts are **model-agnostic**. little-coder runs on whatever small local model you choose to serve, so nothing here is tied to a specific LLM — pick a model that runs well on your hardware and point the delegation command at it.
+The traversal — which phase runs next, when to loop, when to retry, when to stop
+— is owned by the graph, not the model. The LLM only does the work *inside* each
+phase; the `StateGraph`'s edges, routers, and checkpointer enforce the phase
+sequence, the delegate→review fix loop, the retry cap, and the human-in-the-loop
+pauses.
 
-This repo holds four iterations of the agent prompt across three versions. Each one fixed real failures seen in use. Use **`agents/lead-planner/lead-planner-v3.md`** in production; earlier versions are archived under `agents/lead-planner/archive/` for reference and history.
+Nothing about the workflow is hardcoded in Python. The shape of the DAG lives in
+[`graph/workflow.yaml`](graph/workflow.yaml) and the per-phase instructions in
+[`graph/phases/`](graph/phases/); the engine in
+[`graph/lead_planner_graph/`](graph/lead_planner_graph/) is generic and reads
+them at runtime. It is **model-agnostic** — the engine talks only to an `LLM`
+Protocol, so the orchestrator model (the planner's reasoning) and the worker
+model little-coder drives can each be any model you serve.
 
-## Two ways to run it: LLM-managed vs. graph-managed traversal
+Everything lives under [`graph/`](graph/); the paths and commands below are
+relative to that directory.
 
-There are now two ways to drive the same workflow, and they differ in **who owns the traversal** — the decision of which phase runs next, when to loop, when to retry, and when to stop:
+## How it works — the graph
 
-- **LLM-managed (the v3 spine + skills).** The model reads the spine in `agents/lead-planner/lead-planner-v3.md`, loads skills on demand, and decides traversal itself turn by turn. Run it in OpenCode. This is the original design and is described below.
-- **Graph-managed (LangGraph DAG, in [`graph/`](graph/)).** The traversal is lifted out of the model and into a LangGraph `StateGraph`. The model only does the work *inside* each phase; the graph's edges, routers, and a checkpointer enforce the phase sequence, the delegate→review fix loop, the retry cap, and the two human-in-the-loop pauses. The DAG and the phase instructions live in editable files (`graph/workflow.yaml` and `graph/phases/`), so you reshape the workflow without touching Python. For dev it ships a visual interface — `langgraph dev` opens the workflow in LangGraph Studio locally (step-through, live state, interrupts answered in the UI), so you get a real dev environment without OpenCode.
+```
+        START
+          │
+        intent ──(interrupt: clarifying questions)
+          │
+       planning ──(interrupt: plan approval)
+          │
+   route_after_planning ── no components ─────────────┐
+          │ has components                            │
+          ▼                                           │
+       delegate ◄───────────────────┐                 │
+          │                         │                 │
+        review                      │                 │
+          │                         │                 │
+   route_after_review               │                 │
+     ├─ next  → delegate (next component)              │
+     ├─ fix   → delegate (re-deliver, capped) ─────────┘
+     ├─ done  → report                                 │
+     └─ escalate → report ◄─────────────────────────────
+          │
+        report → END
+```
 
-The `graph/` runner reuses the v3 content verbatim — the spine's identity/routing/invariants became `graph/phases/system.md`, and the four skills became the per-phase instruction files — so both paths describe the same agent. Pick LLM-managed for the lightweight OpenCode setup, or graph-managed when you want deterministic control flow, enforced retry caps, and persistent, resumable human checkpoints. See [`graph/README.md`](graph/README.md) for the full diagram and how to run it.
+- **Phases are nodes.** `intent`, `planning`, `delegate`, `review`, `report`.
+- **Traversal is edges + routers.** Plain edges for the linear hops; two named
+  routers (`route_after_planning`, `route_after_review`) for the branches.
+- **The fix loop is a real cycle** delegate → review → delegate, **bounded in
+  code** by `settings.max_fix_attempts`. The model no longer counts attempts.
+- **Human-in-the-loop is built in.** The two pause points (clarifying questions,
+  plan approval) are LangGraph `interrupt()` calls; a checkpointer persists state
+  while the graph waits, and `Command(resume=...)` continues it.
+- **The orchestrator runs the tests; little-coder never does.** Running and
+  diagnosing test output is the planner's job; little-coder only writes code and
+  tests, one cohesive component at a time, with deterministic tests.
 
 ## Getting set up
 
-Running any version of this agent needs three pieces working together:
+Three pieces work together:
 
-1. **[LM Studio](https://lmstudio.ai/)** — runs the local models that power the agents. Install it, then download and load **two** small models: one to act as the orchestrator and one to act as the worker that little-coder drives. Any capable small local model works — the prompts don't assume a particular one — so choose whatever fits your hardware. Start LM Studio's local server so little-coder can reach the worker model.
-2. **[OpenCode](https://opencode.ai/)** — the terminal AI-agent harness that runs `lead-planner` as a primary agent. These `.md` files use OpenCode's agent format (the `mode: primary`, `temperature`, and `description` frontmatter). Install it, then add the prompt as an agent.
-3. **[little-coder](https://github.com/itayinbarr/little-coder)** — the CLI the planner delegates all implementation to. It's a coding agent tuned for small local models, with a built-in LM Studio provider. Follow the install steps in its README, then confirm that a sample call runs against your LM Studio server before wiring it into the planner.
+1. **[LM Studio](https://lmstudio.ai/)** — runs the local models. Load **two**
+   small models: one **orchestrator** (the planner's reasoning, used by the LLM
+   adapter) and one **worker** (what little-coder drives). Any capable small
+   local model works. Start LM Studio's local server.
+2. **[little-coder](https://github.com/itayinbarr/little-coder)** — the CLI the
+   planner delegates all implementation to, with a built-in LM Studio provider.
+   Install it and confirm a sample call runs against your LM Studio server, then
+   make sure it is on your `PATH`.
+3. **The engine** — install the Python package (run from `graph/`):
 
-With all three in place, point OpenCode at `agents/lead-planner/lead-planner-v3.md` and start planning.
+   ```bash
+   cd graph
+   pip install -e ".[dev]"     # engine + langgraph-cli[inmem] + pytest
+   cp .env.example .env         # point at your LM Studio server / model (optional)
+   ```
 
-## Versions at a glance
+The orchestrator model and LM Studio endpoint are set via the environment (see
+`.env.example`); the worker model little-coder drives is set in `workflow.yaml`
+(`settings.worker_model` / `worker_provider`).
 
-| File | Lines | Role |
-|------|------:|------|
-| `archive/lead-planner.md` | 266 | v1 — original baseline |
-| `archive/lead-planner-v2.md` | 425 | v2 — fully hardened, all fixes layered in |
-| `archive/lead-planner-v2-COMPACT.md` | 95 | v2 consolidated — same behavior, de-duplicated |
-| `lead-planner-v3.md` | 43 | v3 — spine + on-demand skills architecture **(recommended)** |
+## The dev interface — LangGraph Studio
 
-All files live under `agents/lead-planner/`. v3 draws on four skill files in `skills/` that are loaded on demand rather than inlined into the agent prompt.
+The clean dev experience is **LangGraph Studio via `langgraph dev`** — a visual
+graph debugger that runs locally and offline against your LM Studio. No cloud
+account is needed for local dev.
 
-## v1 — `archive/lead-planner.md` (original baseline)
+```bash
+langgraph dev               # starts the local server and opens Studio in the browser
+```
 
-Establishes the core concept: a planning agent that delegates implementation to little-coder via `bash` and writes planning artifacts directly.
+`langgraph.json` is the manifest; it loads `lead_planner_graph/app.py:graph` (the
+uncompiled `StateGraph`, so the dev server owns persistence). In Studio you get:
 
-Limitations that later versions fixed:
+- the flowchart above as a live, clickable graph;
+- step-through execution with the full `PlannerState` visible (and editable) at
+  every node;
+- **the two interrupts handled in the UI** — answer clarifying questions and
+  approve/revise the plan in a panel instead of at a prompt;
+- time-travel: fork from any past checkpoint and re-run.
 
-- **Malformed frontmatter** — the "Your Role" section was wedged inside the YAML block, ahead of `name`/`description`/`mode`/`temperature`, so the agent config could fail to parse or be silently dropped.
-- **Redundant and contradictory** — the "never delegate planning" rule appeared roughly six times, and the emphasis skewed so hard toward "don't delegate / do it yourself" that the agent could stop delegating implementation altogether.
-- **No delegation discipline** — nothing constrained prompt scope (prompts could balloon into whole modules), no "requirements vs. code" rule, no shell-safety rules for the command, and no distinction between a malformed-command error and a little-coder failure.
+Hot reload is on, so editing `workflow.yaml` or a `phases/*.md` file updates the
+running graph.
 
-## v2 — `archive/lead-planner-v2.md` (fully hardened)
+### Troubleshooting `langgraph dev`
 
-Same overall structure as v1, with every behavioral fix found in testing added as explicit rules. Improvements over v1:
+**`AttributeError: module 'langgraph_api.config' has no attribute 'LSD_PROM_METRICS_ENABLED'`** (or a similar missing-attribute crash during server startup). The dev server is two rolling `.dev` packages — `langgraph-api` and `langgraph-runtime-inmem` — and you've landed a `runtime-inmem` newer than the `langgraph-api` beside it. Realign them:
 
-- **Valid frontmatter** — YAML block fixed; the role section moved into the document body.
-- **Affirmative routing rule** — planning → the agent, implementation → little-coder, stated as *equally binding*, so the agent neither refuses to delegate nor takes the work over itself.
-- **Component-level scoping** — one cohesive component per prompt (a single function, a small class *with all its methods*, or a decorator). A class is one unit and is never split method-by-method, and the agent must not distort the user's design (e.g. turn a requested class into loose functions) just to shrink a prompt.
-- **Requirements, not code** — prompts describe what to build in plain words; no source code, signatures, skeletons, docstrings, pseudo-code, or prescribed libraries/data structures. little-coder makes the implementation choices.
-- **Shell-safe commands** — the command must be a single physical line (no `\` continuations, which caused `command not found: -p`), the prompt must contain no backticks/`$`/inner quotes/backslashes (backticks caused `command not found: RateLimiter`), and `-p --no-session` must always be present.
-- **Editing existing code is implementation** — moving tests between files, splitting, refactoring, and renaming all get delegated; the agent never opens a file to edit code itself.
-- **Source-aware error handling** — distinguishes a malformed-command shell error (fix the command and re-run, never drop a flag) from a little-coder failure (retry/clarify), and forbids taking over implementation on any error.
+```bash
+pip install -U "langgraph-cli[inmem]" langgraph-api langgraph-runtime-inmem
+# still crashing? the runtime is ahead of the api — pick one:
+pip install -U --pre langgraph-api                 # bring the api forward
+pip install --pre "langgraph-runtime-inmem<0.31"   # or hold the runtime back
+```
 
-Trade-off: thorough but long and repetitive, with several overlapping sections that could compete with one another.
+**Root cause is often Python 3.14.** These platform server packages don't reliably ship stable wheels for 3.14 yet, so pip falls back to mismatched pre-releases. Use a venv on 3.12/3.13 for the dev server:
 
-## v2-COMPACT — `archive/lead-planner-v2-COMPACT.md` (consolidated)
+```bash
+python3.12 -m venv .venv && source .venv/bin/activate && pip install -e ".[dev]"
+```
 
-Same behavior as v2, restructured so the rules are easier to follow — and easier for a small local model to obey reliably. Improvements over v2:
+The core engine (`langgraph` 1.2.5) and the headless CLI runner are fine on 3.14 — only the visual dev server is sensitive. Confirm the graph itself with `python -m lead_planner_graph.run --demo`.
 
-- **~95 lines, down from 425**, with none of the rules lost.
-- **One routing rule + one six-point pre-send checklist** serve as the single source of truth, replacing roughly five overlapping sections. Before any command the agent checks: one component; requirements not code; tests scoped to the component; one line, no backslashes; no shell-special characters; flags present.
-- **Repetition removed** — the "never delegate planning" warnings collapse into a single statement.
-- **Contradictions removed** — earlier versions had rules that quietly disagreed (e.g. "one method per prompt" vs. "a class is one component," "include the signature" vs. "no code"), which made the agent reason *against* its own instructions. Those seams are gone.
-- **Quick-reference block** at the end restates the checklist compactly.
+## Run it headless (CLI / CI)
 
-## v3 — `lead-planner-v3.md` (spine + skills, recommended)
+```bash
+pip install -r requirements.txt     # runtime only (no dev server / tests)
 
-Replaces the single monolithic prompt with a **43-line spine** that loads detailed phase instructions on demand from separate skill files. The spine holds only what is always true — identity, the routing rule, the phase sequence, and core invariants. Everything else lives in `skills/` and is loaded when the agent enters that phase.
+# Real run (needs LM Studio serving the orchestrator model + little-coder on PATH):
+python -m lead_planner_graph.run --request "Build a thread-safe rate limiter" --workdir /path/to/project
 
-Improvements over v2-COMPACT:
+# Offline demo (FakeLLM, no servers) — exercises interrupts + the fix loop:
+python -m lead_planner_graph.run --demo
 
-- **Spine + on-demand skills** — the agent file drops from 95 to 43 lines. Full instructions are kept out of context until needed, reducing noise and keeping each phase's guidance current without bloating the prompt.
-- **Four explicit phases, each with its own skill** — intent extraction, planning artifacts, delegation, and review-and-fix are separate skills loaded in sequence: `intent-extraction` → `planning-artifacts` → `delegating-to-little-coder` → `reviewing-and-fixing`.
-- **Intent extraction as a first-class phase** — the agent now explicitly gathers context from the working directory before planning, answering its own questions read-only before troubling the user. This replaces the implicit "understand the request" step that v2 left undefined.
-- **Orchestrator runs tests; little-coder never does** — made explicit as a core invariant. The review-and-fix skill adds a structured diagnose-then-re-delegate loop (capped at two attempts) and a "distill, don't dump" rule that forbids pasting tracebacks or logs into delegation prompts.
-- **Deterministic tests required** — the delegation skill now requires tests to control time through an injected or mockable clock rather than real sleeps, eliminating the most common source of flaky failures.
-- **Tool reference decoupled from the agent** — the full tool schema reference lives in `rules/tool-use.md` (embedded in the reviewing-and-fixing skill) rather than cluttering the agent file.
+# Tests:
+python -m pytest tests/ -q
+```
 
-Trade-off: behavior is now split across five files, so following a single rule requires reading the right skill. The spine's invariants cover the cases where a skill isn't loaded yet.
+When run headless the runner prints the clarifying questions or the plan and
+reads your answer from stdin, then resumes exactly where it left off.
+
+## Project layout
+
+Everything is under `graph/`. The three extension points — `nodes/`, `routers/`,
+and `llm/` — each follow the same shape: the implementations sit at the top of
+the package, and the scaffolding they plug into lives in a `framework/`
+subpackage. Node types and routers self-register via a decorator (`@node_type`,
+`@router`), so adding one is just a new file — no central edit.
+
+| Path | Role |
+|------|------|
+| `workflow.yaml` | The DAG: nodes, edges, routers, interrupts, and tunable `settings`. **Edit this to reshape the workflow.** |
+| `phases/system.md` | Identity + routing rule + invariants, prepended to every node. |
+| `phases/*.md` | One instruction file per phase, each ending with a small JSON output contract the engine parses. **Edit these to change phase behavior.** |
+| `workflow-graph.md` | The rendered Mermaid DAG (regenerable). |
+| `langgraph.json` | Manifest `langgraph dev` reads; points at the graph entrypoint. |
+| `pyproject.toml` / `.env.example` | Packaging (incl. the `[dev]` extra) and the LM Studio env settings. |
+| `lead_planner_graph/app.py` | The entrypoint Studio loads — builds the uncompiled graph from env + config. |
+| `lead_planner_graph/builder.py` | Compiles the `StateGraph` from the config. |
+| `lead_planner_graph/config.py` | Loads and validates the YAML + phase files. |
+| `lead_planner_graph/state.py` | The typed `PlannerState` threaded through the graph. |
+| `lead_planner_graph/run.py` | CLI runner that services interrupts from stdin. |
+| `lead_planner_graph/llm/` | Pluggable LLM package: `framework/` (the `LLM` Protocol + JSON parsing) and one adapter per file (`lmstudio.py`, `fake.py`). |
+| `lead_planner_graph/nodes/` | The node behaviors (`agent`, `delegate`, `review`) plus `framework/` (dependency injection, the shared toolkit, the little-coder integration, and the node-type dispatch). |
+| `lead_planner_graph/routers/` | The branch functions (`planning`, `review`) plus `framework/` (the `@router` decorator + dispatch). |
+| `tests/test_smoke.py` | End-to-end tests (no servers needed). |
+
+## How a phase talks to the engine
+
+Each `phases/*.md` ends with a JSON output contract. A phase does its reasoning
+in prose, then emits one fenced ```json block the node parses:
+
+- **intent** → `{ "intent": "...", "questions": [...] }` — non-empty `questions`
+  triggers the clarification interrupt.
+- **planning** → `{ "artifact_type": "...", "components": [...] }` — the
+  components become the delegation queue; the prose above is the approved plan.
+- **delegate** → `{ "prompt": "..." }` — the engine validates it against the
+  shell-safety rules and wraps it in the full command.
+- **review** → `{ "passed": bool, "notes": "...", "diagnosis": "..." }` — the
+  engine trusts the *actual* pytest result for pass/fail and uses `diagnosis`
+  for a capped fix re-delivery.
+
+Want a different contract or a new phase? Add a `phases/*.md` file and a node
+entry in `workflow.yaml`. Only a genuinely new *kind* of work needs new Python (a
+node type in `nodes/` or a router in `routers/`, each self-registering via its
+decorator).
+
+## Adding an LLM provider
+
+The engine talks only to the `LLM` Protocol (`complete(system, user) -> str`).
+`LMStudioAdapter` ships for the local LM Studio server, and `FakeLLM` satisfies
+the same contract for tests and the offline demo. To target another provider,
+drop a new module in `lead_planner_graph/llm/` whose class implements
+`complete(...)` — nothing imports it except whoever constructs it (`run.py` /
+`app.py`).
 
 ## Lessons learned
 
@@ -91,6 +205,5 @@ Trade-off: behavior is now split across five files, so following a single rule r
 - **Multi-model review improves results** — Having separate models independently tackle a problem and combining their outputs surfaces blind spots a single model would miss.
 - **Temperature controls determinism** — Lower temperatures produce more consistent, predictable outputs. Use higher temperatures only when exploration is the goal.
 - **Less context can be better** — Flooding a model with context can hurt focus and reliability. Limiting the context window often makes smaller models behave more predictably.
-- **Ambiguity gets exploited** — Models will find and use any gap in instructions. Clear, explicit language in agent files is the foundation of reliable behavior.
+- **Ambiguity gets exploited** — Models will find and use any gap in instructions. Clear, explicit language is the foundation of reliable behavior.
 - **Agentic architecture has a learning curve** — Building reliable workflows requires understanding how components connect. LangGraph makes the structure of agentic systems explicit, turning abstract orchestration into something concrete and reasoned about.
-
