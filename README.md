@@ -92,11 +92,5 @@ Trade-off: behavior is now split across five files, so following a single rule r
 - **Temperature controls determinism** — Lower temperatures produce more consistent, predictable outputs. Use higher temperatures only when exploration is the goal.
 - **Less context can be better** — Flooding a model with context can hurt focus and reliability. Limiting the context window often makes smaller models behave more predictably.
 - **Ambiguity gets exploited** — Models will find and use any gap in instructions. Clear, explicit language in agent files is the foundation of reliable behavior.
+- **Agentic architecture has a learning curve** — Building reliable workflows requires understanding how components connect. LangGraph makes the structure of agentic systems explicit, turning abstract orchestration into something concrete and reasoned about.
 
-## Roadmap
-
-- [ ] **Translation layer** — converts vague user prompts into structured specs before they reach the orchestrator
-- [ ] **RAG store** — retrieves coding style, patterns, and project conventions to inject as context
-- [ ] **Reasoning effort budgets** — explicit low/medium/high effort per layer (translation → orchestrator → worker)
-- [ ] **Prompt logging** — captures raw input vs expanded spec vs output quality to identify failure patterns
-- [ ] **DSPy optimization** — auto-tunes translation prompts once enough logged examples exist
