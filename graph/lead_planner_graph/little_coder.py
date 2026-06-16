@@ -11,6 +11,7 @@ guarantees a well-formed command.
 from __future__ import annotations
 
 import subprocess
+import sys
 from dataclasses import dataclass
 
 # Characters that would be interpreted by the shell inside the double-quoted
@@ -94,8 +95,13 @@ def run_command(command: str, *, workdir: str, timeout: float = 3600.0) -> Deleg
 
 
 def run_tests(workdir: str, *, target: str | None = None, timeout: float = 600.0) -> DelegationResult:
-    """Run the component's tests with pytest — the orchestrator's job, never little-coder's."""
-    cmd = ["python", "-m", "pytest", "-q"]
+    """Run the component's tests with pytest — the orchestrator's job, never little-coder's.
+
+    Uses ``sys.executable`` (the interpreter currently running the orchestrator)
+    rather than a bare ``python``, which may not exist on PATH — on many systems
+    only ``python3`` is present.
+    """
+    cmd = [sys.executable, "-m", "pytest", "-q"]
     if target:
         cmd.append(target)
     proc = subprocess.run(
