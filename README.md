@@ -1,4 +1,5 @@
 # Lead-Planner
+<p align="center"><img src="assets/banner.svg" alt="Lead-Planner" width="100%"></p>
 
 A planning-and-orchestration agent built on a **LangGraph DAG**. It reads a
 request, breaks it into tasks, writes the planning artifacts itself (user

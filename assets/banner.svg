@@ -1,0 +1,53 @@
+<svg viewBox="0 0 1280 400" xmlns="http://www.w3.org/2000/svg" font-family="'JetBrains Mono','SF Mono','Fira Code',Menlo,Consolas,'Courier New',monospace">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0b1017"/>
+      <stop offset="1" stop-color="#080b10"/>
+    </linearGradient>
+    <linearGradient id="win" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0f141b"/>
+      <stop offset="1" stop-color="#0c1118"/>
+    </linearGradient>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="3.2" result="b"/>
+      <feMerge>
+        <feMergeNode in="b"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- backdrop -->
+  <rect x="0" y="0" width="1280" height="400" fill="url(#bg)"/>
+
+  <!-- terminal window -->
+  <rect x="40" y="28" width="1200" height="344" rx="16" fill="url(#win)" stroke="#222b36" stroke-width="1.5"/>
+
+  <!-- title bar -->
+  <line x1="40" y1="75" x2="1240" y2="75" stroke="#1d2530" stroke-width="1.5"/>
+  <circle cx="74" cy="52" r="7" fill="#ff5f56"/>
+  <circle cx="98" cy="52" r="7" fill="#ffbd2e"/>
+  <circle cx="122" cy="52" r="7" fill="#27c93f"/>
+  <text x="640" y="57" text-anchor="middle" font-size="15" fill="#5b6675">lead-planner — zsh</text>
+
+  <!-- prompt line -->
+  <text x="80" y="132" font-size="21">
+    <tspan fill="#3fb950">❯</tspan><tspan fill="#56d4dd"> langgraph</tspan><tspan fill="#c9d1d9"> dev</tspan><tspan fill="#3a4452">  # plan, then delegate</tspan>
+  </text>
+
+  <!-- title -->
+  <text x="78" y="216" font-size="68" font-weight="700">
+    <tspan fill="#f0f6fc">Lead-Planner</tspan><tspan fill="#3fb950" filter="url(#glow)"> ▌</tspan>
+  </text>
+
+  <!-- tagline as a comment -->
+  <text x="82" y="262" font-size="22" fill="#3fb950"># A LangGraph orchestrator that delegates to a local coder</text>
+
+  <!-- phase flow -->
+  <text x="82" y="324" font-size="21" letter-spacing="0.5">
+    <tspan fill="#bc8cff">intent</tspan><tspan fill="#3a4452">  →  </tspan><tspan fill="#56d4dd">planning</tspan><tspan fill="#3a4452">  →  </tspan><tspan fill="#3fb950">delegate</tspan><tspan fill="#3a4452">  →  </tspan><tspan fill="#e3b341">review</tspan><tspan fill="#3a4452">  →  </tspan><tspan fill="#ff7b9c">report</tspan>
+  </text>
+
+  <!-- stack tag, bottom-right -->
+  <text x="1200" y="324" text-anchor="end" font-size="15" fill="#4a5564">LangGraph · little-coder · LM Studio</text>
+</svg>
