@@ -1,0 +1,105 @@
+# ---------------------------------------------------------------------------
+# lead-planner workflow — the DAG that LangGraph traverses.
+#
+# This file IS the workflow. Edit it to reshape how the orchestrator moves
+# between phases; you never have to touch the Python engine to do so. The
+# engine (lead_planner_graph/) reads this file plus the instruction files in
+# phases/ and builds a LangGraph StateGraph from them at runtime.
+#
+# What you can change here without writing code:
+#   - the prompt/instructions a phase runs on        -> nodes.<id>.instructions
+#   - which phase runs first                          -> entry
+#   - how phases connect (plain edges + branches)     -> edges
+#   - the human pause points (LangGraph interrupts)   -> nodes.<id>.interrupt
+#   - tunable limits like the fix-retry cap           -> settings
+#
+# The only things defined in Python are the named node TYPES (what kind of work
+# a node does) and the named ROUTERS (the branch decision functions). Both are
+# referenced from here by name and documented in lead_planner_graph/.
+# ---------------------------------------------------------------------------
+
+name: lead-planner
+description: >
+  Plan-and-orchestrate agent. Understands intent, writes planning artifacts,
+  delegates every implementation component to little-coder one at a time, runs
+  and diagnoses the tests itself, and reports. Traversal is owned by LangGraph.
+
+# Prepended to every node's instructions. Holds identity + routing rule +
+# invariants — the things that are true in every phase.
+system_prompt: phases/system.md
+
+# Tunable knobs read by the engine and routers. Change behavior here, not code.
+settings:
+  max_fix_attempts: 2                  # how many times a failing component is re-delegated
+
+  # The orchestrator model — the planner's own reasoning brain (intent, planning,
+  # review, report). This is the model the LLM adapter talks to.
+  orchestrator_model: openai/gpt-oss-20b
+
+  # The worker model — what little-coder drives to actually write code. These are
+  # two different models (see the repo README); keep them distinct.
+  worker_model: qwen/qwen3.5-9B        # little-coder --model
+  worker_provider: lmstudio            # little-coder --provider
+
+# Where traversal begins.
+entry: intent
+
+# ---------------------------------------------------------------------------
+# Nodes — each is one phase. `type` selects the Python node behavior;
+# `instructions` is the editable phase file; `interrupt` (optional) makes the
+# node pause for the user via a LangGraph interrupt.
+# ---------------------------------------------------------------------------
+nodes:
+  intent:
+    type: agent              # LLM reasoning over a read-only directory snapshot
+    instructions: phases/intent-extraction.md
+    interrupt: clarification # pause to ask clarifying questions when needed
+
+  planning:
+    type: agent
+    instructions: phases/planning-artifacts.md
+    interrupt: approval      # pause for plan approval before any delegation
+
+  delegate:
+    type: delegate           # builds + validates + runs the little-coder command
+    instructions: phases/delegating-to-little-coder.md
+
+  review:
+    type: review             # runs the component's tests, then LLM diagnoses
+    instructions: phases/reviewing-and-fixing.md
+
+  report:
+    type: agent
+    instructions: phases/report.md
+    terminal: true
+
+# ---------------------------------------------------------------------------
+# Edges — the DAG itself.
+#   `to:`     a plain edge to the next node.
+#   `router:` a named branch function (in lead_planner_graph/routers.py) whose
+#             return value is looked up in `map:` to pick the next node.
+# ---------------------------------------------------------------------------
+edges:
+  intent:
+    to: planning             # interrupts resolve inside the node; then move on
+
+  planning:
+    # If the plan has no implementation components, skip straight to report.
+    router: route_after_planning
+    map:
+      delegate: delegate
+      report: report
+
+  delegate:
+    to: review
+
+  review:
+    # The cap and queue logic live in the review node + this router (which reads
+    # settings.max_fix_attempts and the component queue from state).
+    router: route_after_review
+    map:
+      delegate: delegate     # next component, OR a capped fix re-delivery
+      report: report
+
+  report:
+    to: END

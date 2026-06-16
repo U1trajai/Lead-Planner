@@ -6,6 +6,15 @@ The prompts are **model-agnostic**. little-coder runs on whatever small local mo
 
 This repo holds four iterations of the agent prompt across three versions. Each one fixed real failures seen in use. Use **`agents/lead-planner/lead-planner-v3.md`** in production; earlier versions are archived under `agents/lead-planner/archive/` for reference and history.
 
+## Two ways to run it: LLM-managed vs. graph-managed traversal
+
+There are now two ways to drive the same workflow, and they differ in **who owns the traversal** — the decision of which phase runs next, when to loop, when to retry, and when to stop:
+
+- **LLM-managed (the v3 spine + skills).** The model reads the spine in `agents/lead-planner/lead-planner-v3.md`, loads skills on demand, and decides traversal itself turn by turn. Run it in OpenCode. This is the original design and is described below.
+- **Graph-managed (LangGraph DAG, in [`graph/`](graph/)).** The traversal is lifted out of the model and into a LangGraph `StateGraph`. The model only does the work *inside* each phase; the graph's edges, routers, and a checkpointer enforce the phase sequence, the delegate→review fix loop, the retry cap, and the two human-in-the-loop pauses. The DAG and the phase instructions live in editable files (`graph/workflow.yaml` and `graph/phases/`), so you reshape the workflow without touching Python. For dev it ships a visual interface — `langgraph dev` opens the workflow in LangGraph Studio locally (step-through, live state, interrupts answered in the UI), so you get a real dev environment without OpenCode.
+
+The `graph/` runner reuses the v3 content verbatim — the spine's identity/routing/invariants became `graph/phases/system.md`, and the four skills became the per-phase instruction files — so both paths describe the same agent. Pick LLM-managed for the lightweight OpenCode setup, or graph-managed when you want deterministic control flow, enforced retry caps, and persistent, resumable human checkpoints. See [`graph/README.md`](graph/README.md) for the full diagram and how to run it.
+
 ## Getting set up
 
 Running any version of this agent needs three pieces working together:
