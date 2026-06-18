@@ -30,7 +30,7 @@ from textual.widgets import Footer, Header, Input, LoadingIndicator, RichLog
 from .builder import build_graph
 from .config import load_config
 from .llm import LMStudioAdapter
-from .run import DEFAULT_WORKFLOW, _get_interrupt
+from .run import DEFAULT_WORKFLOW
 
 # Fallback model ids if neither the saved sidecar nor workflow.yaml has them.
 _DEFAULT_ORCHESTRATOR = "openai/gpt-oss-20b"
@@ -357,6 +357,69 @@ class LeadPlannerTUI(App):
         self.call_from_thread(self._write_md, f"**Input required:** {payload}")
         return self._prompt_user()
 
+    # ----- per-node status surfacing -----------------------------------
+    @staticmethod
+    def _fence(text: str, limit: int | None = None) -> str:
+        text = text.strip()
+        if limit and len(text) > limit:
+            text = "…(truncated)…\n" + text[-limit:]
+        return "```\n" + (text or "(empty)") + "\n```"
+
+    def _format_status(self, node_id: str, update: dict) -> str | None:
+        """Turn one node's state update into a status block, or None to skip.
+
+        Delegate and review — the steps with the least visibility — get rich
+        sections (the exact message handed to the worker, the command, and the
+        test/diagnosis result). Every other node falls back to the one-line trace
+        it already appends to ``state['log']``.
+        """
+        if node_id == "delegate":
+            parts = ["**🔧 Delegate — message sent to the worker LLM:**", ""]
+            parts.append(self._fence(update.get("last_prompt") or ""))
+            command = (update.get("last_command") or "").strip()
+            if command:
+                parts.append(f"**Command:** `{command}`")
+            out = (update.get("last_run_output") or "").strip()
+            if out:
+                parts.append("**Worker output (tail):**")
+                parts.append(self._fence(out, limit=1200))
+            return "\n".join(parts)
+
+        if node_id == "review":
+            passed = update.get("last_passed")
+            status = "✅ tests passed" if passed else "❌ tests failed"
+            action = update.get("next_action", "?")
+            lines = [f"**🔎 Review** — {status} · next: `{action}`"]
+            for ln in update.get("log") or []:  # carries the fix-attempt counter
+                lines.append(f"_{ln}_")
+            diagnosis = (update.get("diagnosis") or update.get("review_notes") or "").strip()
+            if diagnosis:
+                lines.append(f"**Diagnosis:** {diagnosis}")
+            test_out = (update.get("last_test_output") or "").strip()
+            if test_out:
+                lines.append("**Test output (tail):**")
+                lines.append(self._fence(test_out, limit=1200))
+            return "\n".join(lines)
+
+        # Everything else: just surface the node's own one-line trace.
+        lines = update.get("log") or []
+        return "  \n".join(f"_{ln}_" for ln in lines) or None
+
+    def _run_segment(self, graph_input):
+        """Stream the graph until it pauses or ends, surfacing each node update.
+
+        Returns the interrupt payload if the segment paused for input, else None.
+        """
+        for chunk in self._app.stream(graph_input, self._thread, stream_mode="updates"):
+            if "__interrupt__" in chunk:  # paused — hand the payload back to the loop
+                intr = chunk["__interrupt__"][0]
+                return getattr(intr, "value", intr)
+            for node_id, update in chunk.items():
+                status = self._format_status(node_id, update)
+                if status:
+                    self.call_from_thread(self._write_md, status)
+        return None
+
     @work(thread=True, exclusive=True)
     def _drive(self, request: str) -> None:
         try:
@@ -377,13 +440,11 @@ class LeadPlannerTUI(App):
             self._app = build_graph(config, self._llm)
 
             self.call_from_thread(self._set_loading, True)
-            result = self._app.invoke(
-                {"request": request, "workdir": self._workdir}, self._thread
-            )
-            while (payload := _get_interrupt(result)) is not None:
+            payload = self._run_segment({"request": request, "workdir": self._workdir})
+            while payload is not None:
                 answer = self._service_interrupt(payload)
                 self.call_from_thread(self._set_loading, True)
-                result = self._app.invoke(Command(resume=answer), self._thread)
+                payload = self._run_segment(Command(resume=answer))
 
             final = self._app.get_state(self._thread).values
             report = final.get("report") or "_(no report produced)_"

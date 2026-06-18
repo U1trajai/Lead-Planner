@@ -26,6 +26,13 @@ def make_review_node(node: NodeConfig, deps: NodeDeps):
         data = extract_json_block(deps.llm.complete(system, user))
         notes = data.get("notes", "")
         diagnosis = data.get("diagnosis", "") or notes
+        if not passed and not diagnosis.strip():
+            # Never hand the delegate an empty diagnosis — it would have nothing to
+            # act on. The delegate also gets the raw failing test output as a backstop.
+            diagnosis = (
+                "Tests failed; inspect the attached failing test output and correct "
+                "whichever side (implementation or test) is wrong."
+            )
 
         i = state.get("current_index", 0)
         n = len(state.get("components") or [])

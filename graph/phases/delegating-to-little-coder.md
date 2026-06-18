@@ -6,6 +6,11 @@ and validates the full command and enforces the shell-safety rules in code. Your
 job is to write the **prompt text only**: a single-line, requirements-only task
 description for exactly one component.
 
+You run **non-interactively**: you cannot ask the user anything. Always produce
+the JSON prompt from the information you are given — on a fix, the failing test
+output and the current files are attached, so name the file and the change
+yourself rather than asking for them.
+
 The command the engine will run looks like this (shown for context only):
 
 ```bash
@@ -60,13 +65,18 @@ The engine rejects a prompt that fails 4, 5, or 6 before it ever runs, and
 returns the violation to this phase so you can rewrite the prompt — it never
 drops a flag or "fixes" your prompt by mangling it.
 
-## When this is a fix re-delivery
+## When this is a fix (a targeted edit, not a re-delivery)
 If the engine marks this delegation as a fix (the previous attempt's tests
-failed), the corrected behavior is attached below as a one-line diagnosis.
-Because `--no-session` means little-coder cannot patch an existing file,
-re-deliver the **whole component and its tests in one pass**, folding the
-corrected behavior in as a requirement. Distill, do not dump — never paste the
-traceback or the old code.
+failed), the corrected behavior is attached below as a targeted diagnosis naming
+the file and what must change. little-coder has read, edit, and write tools and
+the component's files are **already on disk** from the previous attempt;
+`--no-session` only makes the run ephemeral (no saved chat session), it does
+**not** stop it from editing existing files. So write a prompt that tells
+little-coder to **open the named file(s) and make only the diagnosed change**,
+leaving the rest of the component — and any tests that already pass — untouched.
+Do **not** re-deliver or regenerate the whole component. Still distill, do not
+dump — name the file and the change in plain words; never paste the traceback or
+the old code, and (as always) do not run the tests.
 
 ## Good example (one line, requirements only, no backticks)
 ```
